@@ -29,7 +29,7 @@ We created this fork because we needed to include the following modifications in
 
 | PR | Description |
 | -- | ----------- |
-| [#651]https://github.com/ionic-team/cordova-plugin-ionic-webview/pull/651) | allow enabling fullscreen functions |
+| [#651](https://github.com/ionic-team/cordova-plugin-ionic-webview/pull/651) | allow enabling fullscreen functions |
 
 ## Installation
 
