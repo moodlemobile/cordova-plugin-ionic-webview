@@ -30,11 +30,12 @@ We created this fork because we needed to include the following modifications in
 | PR | Description |
 | -- | ----------- |
 | [#651](https://github.com/ionic-team/cordova-plugin-ionic-webview/pull/651) | allow enabling fullscreen functions |
+| [#677](https://github.com/ionic-team/cordova-plugin-ionic-webview/pull/677) | Webkit ios 16.4 enable inspection   |
 
 ## Installation
 
 You can install this package using the original installation instructions, but installing this package instead:
 
 ```sh
-cordova plugin add @moodlehq/cordova-plugin-ionic-webview@5.0.0-moodle.1
+cordova plugin add @moodlehq/cordova-plugin-ionic-webview@5.0.0-moodle.2
 ```
