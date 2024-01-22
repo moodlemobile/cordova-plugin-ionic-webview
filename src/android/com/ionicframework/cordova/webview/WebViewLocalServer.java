@@ -128,7 +128,7 @@ public class WebViewLocalServer {
     }
 
     public Map<String, String> getResponseHeaders() {
-      return responseHeaders;
+      return new HashMap(responseHeaders);
     }
   }
 
@@ -188,7 +188,7 @@ public class WebViewLocalServer {
     }
     return uri;
   }
-  
+
   private static WebResourceResponse createWebResourceResponse(String mimeType, String encoding, int statusCode, String reasonPhrase, Map<String, String> responseHeaders, InputStream data) {
     if (android.os.Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
       int finalStatusCode = statusCode;
