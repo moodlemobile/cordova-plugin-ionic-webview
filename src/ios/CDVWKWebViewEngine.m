@@ -200,7 +200,7 @@
         ) {
         userAgent = [NSString stringWithFormat:@"%@ %@", userAgent, [settings cordovaSettingForKey:@"AppendUserAgent"]];
     }
-    if([settings cordovaBoolSettingForKey:@"WKFullScreenEnabled" defaultValue:NO]){
+    if([settings cordovaBoolSettingForKey:@"WKFullScreenEnabled" defaultValue:NO] && @available(iOS 17.0, *)){
         [configuration.preferences setValue:[NSNumber numberWithBool:YES] forKey:@"fullScreenEnabled"];
     }
     configuration.applicationNameForUserAgent = userAgent;

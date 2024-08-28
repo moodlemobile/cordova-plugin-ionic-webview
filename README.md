@@ -32,6 +32,7 @@ We created this fork because we needed to include the following modifications in
 | [#651](https://github.com/ionic-team/cordova-plugin-ionic-webview/pull/651) | allow enabling fullscreen functions |
 | [#677](https://github.com/ionic-team/cordova-plugin-ionic-webview/pull/677) | Webkit ios 16.4 enable inspection   |
 | - | Use unique instances for request headers to fix media (extracted from [this capacitor PR](https://github.com/ionic-team/capacitor/pull/5956))  |
+| - | Only allow enabling fullscreen in iOS 17+  |
 
 ## Installation
 
