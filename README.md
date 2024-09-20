@@ -33,11 +33,12 @@ We created this fork because we needed to include the following modifications in
 | [#677](https://github.com/ionic-team/cordova-plugin-ionic-webview/pull/677) | Webkit ios 16.4 enable inspection   |
 | - | Use unique instances for request headers to fix media (extracted from [this capacitor PR](https://github.com/ionic-team/capacitor/pull/5956))  |
 | - | Only allow enabling fullscreen in iOS 17+  |
+| [#692](https://github.com/ionic-team/cordova-plugin-ionic-webview/pull/692) | Support Range requests for reading local files (iOS) |
 
 ## Installation
 
 You can install this package using the original installation instructions, but installing this package instead:
 
 ```sh
-cordova plugin add @moodlehq/cordova-plugin-ionic-webview@5.0.0-moodle.4
+cordova plugin add @moodlehq/cordova-plugin-ionic-webview@5.0.0-moodle.5
 ```
