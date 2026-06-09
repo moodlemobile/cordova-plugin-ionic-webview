@@ -271,7 +271,8 @@
     [self.engineWebView removeFromSuperview];
     WKWebView* wkWebView = [[WKWebView alloc] initWithFrame:self.frame configuration:configuration];
 
-    [wkWebView.scrollView setContentInsetAdjustmentBehavior:UIScrollViewContentInsetAdjustmentNever];
+    // Let Cordova iOS decide status bar area handling (viewport-fit/theme-color integration).
+    [wkWebView.scrollView setContentInsetAdjustmentBehavior:UIScrollViewContentInsetAdjustmentAutomatic];
 
     wkWebView.UIDelegate = self.uiDelegate;
     self.engineWebView = wkWebView;
