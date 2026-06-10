@@ -17,7 +17,7 @@
  under the License.
  */
 
-#import <Cordova/NSDictionary+CordovaPreferences.h>
+#import <Cordova/Cordova.h>
 #import <MobileCoreServices/MobileCoreServices.h>
 #import <AVFoundation/AVFoundation.h>
 #import <objc/message.h>
@@ -121,9 +121,6 @@
         if (NSClassFromString(@"WKWebView") == nil) {
             return nil;
         }
-        // add to keyWindow to ensure it is 'active'
-        [UIApplication.sharedApplication.keyWindow addSubview:self.engineWebView];
-
         self.frame = frame;
     }
     return self;
@@ -224,7 +221,8 @@
     }
     self.CDV_LOCAL_SERVER = [NSString stringWithFormat:@"%@://%@", scheme, bind];
 
-    self.uiDelegate = [[CDVWKWebViewUIDelegate alloc] initWithTitle:[[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleDisplayName"]];
+    self.uiDelegate = [[CDVWKWebViewUIDelegate alloc] initWithTitle:[[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleDisplayName"]
+                                           presentingViewController:self.viewController];
 
     CDVWKWeakScriptMessageHandler *weakScriptMessageHandler = [[CDVWKWeakScriptMessageHandler alloc] initWithScriptMessageHandler:self];
 
@@ -266,8 +264,7 @@
     self.handler = [[IONAssetHandler alloc] initWithBasePath:[self getStartPath] andScheme:scheme];
     [configuration setURLSchemeHandler:self.handler forURLScheme:scheme];
 
-    // re-create WKWebView, since we need to update configuration
-    // remove from keyWindow before recreating
+    // Re-create WKWebView, since we need to update configuration.
     [self.engineWebView removeFromSuperview];
     WKWebView* wkWebView = [[WKWebView alloc] initWithFrame:self.frame configuration:configuration];
 
@@ -276,8 +273,14 @@
 
     wkWebView.UIDelegate = self.uiDelegate;
     self.engineWebView = wkWebView;
-    // add to keyWindow to ensure it is 'active'
-    [UIApplication.sharedApplication.keyWindow addSubview:self.engineWebView];
+    // Attach to the Cordova view hierarchy instead of relying on a global keyWindow.
+    UIView* containerView = self.viewController.view;
+    if (!containerView) {
+        containerView = self.engineWebView.superview;
+    }
+    if (containerView && self.engineWebView.superview != containerView) {
+        [containerView addSubview:self.engineWebView];
+    }
 
     NSString * overrideUserAgent = [settings cordovaSettingForKey:@"OverrideUserAgent"];
     if (overrideUserAgent != nil) {
@@ -403,7 +406,16 @@
 -(void)keyboardWillHide
 {
     // For keyboard dismissal leaving viewport shifted (can potentially be removed when apple releases the fix for the issue discussed here: https://github.com/apache/cordova-ios/issues/417#issuecomment-423340885)
-    UIScrollView * scrollView = self.webView.scrollView;
+    UIScrollView * scrollView = nil;
+    if ([self.webView respondsToSelector:@selector(scrollView)]) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+        scrollView = [self.webView performSelector:@selector(scrollView)];
+#pragma clang diagnostic pop
+    }
+    if (!scrollView) {
+        return;
+    }
     // Calculate some vars for convenience
     CGFloat contentLengthWithInsets = scrollView.contentSize.height + scrollView.adjustedContentInset.top + scrollView.adjustedContentInset.bottom;
     CGFloat contentOffsetY = scrollView.contentOffset.y;
@@ -750,8 +762,7 @@
     BOOL anyPluginsResponded = NO;
     BOOL shouldAllowRequest = NO;
 
-    for (NSString* pluginName in vc.pluginObjects) {
-        CDVPlugin* plugin = [vc.pluginObjects objectForKey:pluginName];
+    for (CDVPlugin* plugin in vc.enumerablePlugins) {
         SEL selector = NSSelectorFromString(@"shouldOverrideLoadWithRequest:navigationType:");
         if ([plugin respondsToSelector:selector]) {
             anyPluginsResponded = YES;

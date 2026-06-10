@@ -23,12 +23,32 @@
 
 - (instancetype)initWithTitle:(NSString*)title
 {
+    return [self initWithTitle:title presentingViewController:nil];
+}
+
+- (instancetype)initWithTitle:(NSString*)title presentingViewController:(UIViewController*)presentingViewController
+{
     self = [super init];
     if (self) {
         self.title = title;
+        self.presentingViewController = presentingViewController;
     }
 
     return self;
+}
+
+- (UIViewController*)presentationControllerForWebView:(WKWebView*)webView
+{
+    UIViewController* controller = self.presentingViewController;
+    if (!controller) {
+        controller = webView.window.rootViewController;
+    }
+
+    while (controller.presentedViewController) {
+        controller = controller.presentedViewController;
+    }
+
+    return controller;
 }
 
 - (void)     webView:(WKWebView*)webView runJavaScriptAlertPanelWithMessage:(NSString*)message
@@ -48,9 +68,12 @@
 
     [alert addAction:ok];
 
-    UIViewController* rootController = [UIApplication sharedApplication].delegate.window.rootViewController;
-
-    [rootController presentViewController:alert animated:YES completion:nil];
+    UIViewController* presenter = [self presentationControllerForWebView:webView];
+    if (presenter) {
+        [presenter presentViewController:alert animated:YES completion:nil];
+    } else {
+        completionHandler();
+    }
 }
 
 - (void)     webView:(WKWebView*)webView runJavaScriptConfirmPanelWithMessage:(NSString*)message
@@ -79,9 +102,12 @@
         }];
     [alert addAction:cancel];
 
-    UIViewController* rootController = [UIApplication sharedApplication].delegate.window.rootViewController;
-
-    [rootController presentViewController:alert animated:YES completion:nil];
+    UIViewController* presenter = [self presentationControllerForWebView:webView];
+    if (presenter) {
+        [presenter presentViewController:alert animated:YES completion:nil];
+    } else {
+        completionHandler(NO);
+    }
 }
 
 - (void)      webView:(WKWebView*)webView runJavaScriptTextInputPanelWithPrompt:(NSString*)prompt
@@ -115,9 +141,12 @@
         textField.text = defaultText;
     }];
 
-    UIViewController* rootController = [UIApplication sharedApplication].delegate.window.rootViewController;
-
-    [rootController presentViewController:alert animated:YES completion:nil];
+    UIViewController* presenter = [self presentationControllerForWebView:webView];
+    if (presenter) {
+        [presenter presentViewController:alert animated:YES completion:nil];
+    } else {
+        completionHandler(nil);
+    }
 }
 
 @end

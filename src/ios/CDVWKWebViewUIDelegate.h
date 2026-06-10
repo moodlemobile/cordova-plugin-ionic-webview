@@ -19,10 +19,14 @@
 
 #import <WebKit/WebKit.h>
 
+@class UIViewController;
+
 @interface CDVWKWebViewUIDelegate : NSObject <WKUIDelegate>
 
 @property (nonatomic, copy) NSString* title;
+@property (nonatomic, weak) UIViewController* presentingViewController;
 
 - (instancetype)initWithTitle:(NSString*)title;
+- (instancetype)initWithTitle:(NSString*)title presentingViewController:(UIViewController*)presentingViewController;
 
 @end
