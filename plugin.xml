@@ -48,6 +48,7 @@
       </feature>
     </config-file>
     <source-file src="src/android/com/ionicframework/cordova/webview/IonicWebViewEngine.java" target-dir="src/com/ionicframework/cordova/webview"/>
+    <source-file src="src/android/com/ionicframework/cordova/webview/IonicWebChromeClient.java" target-dir="src/com/ionicframework/cordova/webview"/>
     <source-file src="src/android/com/ionicframework/cordova/webview/IonicWebView.java" target-dir="src/com/ionicframework/cordova/webview"/>
     <source-file src="src/android/com/ionicframework/cordova/webview/AndroidProtocolHandler.java" target-dir="src/com/ionicframework/cordova/webview"/>
     <source-file src="src/android/com/ionicframework/cordova/webview/UriMatcher.java" target-dir="src/com/ionicframework/cordova/webview"/>
