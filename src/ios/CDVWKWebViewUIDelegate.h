@@ -25,6 +25,7 @@
 
 @property (nonatomic, copy) NSString* title;
 @property (nonatomic, weak) UIViewController* presentingViewController;
+@property (nonatomic, weak) id<WKUIDelegate> fallbackUIDelegate;
 
 - (instancetype)initWithTitle:(NSString*)title;
 - (instancetype)initWithTitle:(NSString*)title presentingViewController:(UIViewController*)presentingViewController;

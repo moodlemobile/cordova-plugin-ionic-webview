@@ -288,7 +288,11 @@
     }
 
     if ([self.viewController conformsToProtocol:@protocol(WKUIDelegate)]) {
-        wkWebView.UIDelegate = (id <WKUIDelegate>)self.viewController;
+        if ([self.uiDelegate isKindOfClass:[CDVWKWebViewUIDelegate class]]) {
+            ((CDVWKWebViewUIDelegate*)self.uiDelegate).fallbackUIDelegate = (id <WKUIDelegate>)self.viewController;
+        } else {
+            wkWebView.UIDelegate = (id <WKUIDelegate>)self.viewController;
+        }
     }
 
     if ([self.viewController conformsToProtocol:@protocol(WKNavigationDelegate)]) {
@@ -540,7 +544,12 @@
     }
 
     if (uiDelegate && [uiDelegate conformsToProtocol:@protocol(WKUIDelegate)]) {
-        wkWebView.UIDelegate = uiDelegate;
+        if ([self.uiDelegate isKindOfClass:[CDVWKWebViewUIDelegate class]]) {
+            ((CDVWKWebViewUIDelegate*)self.uiDelegate).fallbackUIDelegate = uiDelegate;
+            wkWebView.UIDelegate = self.uiDelegate;
+        } else {
+            wkWebView.UIDelegate = uiDelegate;
+        }
     }
 
     if (settings && [settings isKindOfClass:[NSDictionary class]]) {
