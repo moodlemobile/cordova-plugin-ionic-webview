@@ -35,6 +35,8 @@ We created this fork because we needed to include the following modifications in
 | - | Only allow enabling fullscreen in iOS 17+  |
 | [#692](https://github.com/ionic-team/cordova-plugin-ionic-webview/pull/692) | Support Range requests for reading local files (iOS) |
 | - | Update code for Cordova iOS 8 |
+| - | iOS: Add some persistency to media permission requests. |
+| - | Android: Request Android native media permission if an iframe tries to record media. Also, add an extra confirmation modal every time the WebView tries to record media to increase security. |
 
 ## Installation
 
