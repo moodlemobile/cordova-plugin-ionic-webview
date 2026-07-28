@@ -19,6 +19,9 @@
 
 #import "CDVWKWebViewUIDelegate.h"
 
+static NSString* const CDV_TRUSTED_MEDIA_CAPTURE_SITES_STORAGE_KEY = @"cdvTrustedMediaCaptureSitesByType";
+static NSString* const CDV_TRUSTED_MEDIA_CAPTURE_MAIN_FRAME_STORAGE_KEY = @"cdvTrustedMediaCaptureMainFrameByType";
+
 @implementation CDVWKWebViewUIDelegate
 
 - (instancetype)initWithTitle:(NSString*)title
@@ -35,6 +38,24 @@
     }
 
     return self;
+}
+
+- (BOOL)respondsToSelector:(SEL)aSelector
+{
+    if ([super respondsToSelector:aSelector]) {
+        return YES;
+    }
+
+    return [self.fallbackUIDelegate respondsToSelector:aSelector];
+}
+
+- (id)forwardingTargetForSelector:(SEL)aSelector
+{
+    if ([self.fallbackUIDelegate respondsToSelector:aSelector]) {
+        return self.fallbackUIDelegate;
+    }
+
+    return [super forwardingTargetForSelector:aSelector];
 }
 
 - (UIViewController*)presentationControllerForWebView:(WKWebView*)webView
@@ -148,5 +169,394 @@
         completionHandler(nil);
     }
 }
+
+#if __IPHONE_OS_VERSION_MAX_ALLOWED >= 150000
+- (void)webView:(WKWebView*)webView
+    requestMediaCapturePermissionForOrigin:(WKSecurityOrigin*)origin
+                          initiatedByFrame:(WKFrameInfo*)frame
+                                      type:(WKMediaCaptureType)type
+                           decisionHandler:(void (^)(WKPermissionDecision decision))decisionHandler API_AVAILABLE(ios(15.0))
+{
+    if (@available(iOS 15.0, *)) {
+        NSArray* mediaCaptureTypeKeys = [self mediaCaptureTypeKeysForType:type];
+
+        if (mediaCaptureTypeKeys.count == 0) {
+            decisionHandler(WKPermissionDecisionPrompt);
+
+            return;
+        }
+
+        BOOL isMainFrame = [frame isMainFrame];
+        NSString* siteURL = !isMainFrame ? [self trustedSiteURLForFrame:frame origin:origin] : nil;
+
+        if (isMainFrame && [self isTrustedMainFrameMediaCaptureTypeKeys:mediaCaptureTypeKeys]) {
+            decisionHandler(WKPermissionDecisionGrant);
+
+            return;
+        }
+
+        if (!isMainFrame && siteURL.length > 0 && [self isTrustedSiteURL:siteURL mediaCaptureTypeKeys:mediaCaptureTypeKeys]) {
+            decisionHandler(WKPermissionDecisionGrant);
+
+            return;
+        }
+
+        NSString* host = isMainFrame ? [self getAppName] : [self displayHostForFrame:frame origin:origin];
+        NSString* mediaName = [self mediaCapturePromptMediaNameForType:type];
+        NSString* message = [NSString stringWithFormat:@"\"%@\" would like to access the %@.", host, mediaName];
+
+        [self presentMediaCapturePromptForWebView:webView message:message
+            allowHandler:^{
+                if (isMainFrame) {
+                    [self addTrustedMainFrameMediaCaptureTypeKeys:mediaCaptureTypeKeys];
+                } else if (siteURL.length > 0) {
+                    [self addTrustedSiteURL:siteURL mediaCaptureTypeKeys:mediaCaptureTypeKeys];
+                }
+
+                decisionHandler(WKPermissionDecisionGrant);
+            }
+            denyHandler:^{
+                decisionHandler(WKPermissionDecisionDeny);
+            }];
+
+        return;
+    }
+
+    decisionHandler(WKPermissionDecisionPrompt);
+}
+
+/**
+ * Builds a normalized site URL used to persist trust decisions for subframe media capture.
+ *
+ * The URL is sanitized by dropping fragment values, removing volatile/sensitive query
+ * parameters, and normalizing tokenpluginfile path segments before storage.
+ *
+ * @param frame Frame that initiated the media capture request.
+ * @param origin Security origin associated with the request.
+ * @return Normalized absolute URL for trust matching, or nil when it cannot be resolved.
+ */
+- (NSString*)trustedSiteURLForFrame:(WKFrameInfo*)frame origin:(WKSecurityOrigin*)origin API_AVAILABLE(ios(15.0))
+{
+    NSURL* frameURL = frame.request.URL;
+    if (frameURL.absoluteString.length > 0) {
+        NSURLComponents* components = [NSURLComponents componentsWithURL:frameURL resolvingAgainstBaseURL:NO];
+        components.fragment = nil;
+
+        // Remove some parameters that are not relevant to the URL and could be sensitive.
+        // This could be improved in the future by allowing JS code to specify the parameters, or provide a callback to filter them.
+        NSArray* ignoredQueryParamNames = @[@"lang", @"token", @"wstoken", @"privatetoken"];
+        NSMutableArray* filteredQueryItems = [NSMutableArray array];
+
+        for (NSURLQueryItem* queryItem in components.queryItems) {
+            NSString* queryItemName = [queryItem.name lowercaseString];
+            if (queryItemName.length > 0 && [ignoredQueryParamNames containsObject:queryItemName]) {
+                continue;
+            }
+
+            [filteredQueryItems addObject:queryItem];
+        }
+
+        components.queryItems = filteredQueryItems.count > 0 ? filteredQueryItems : nil;
+
+        NSRegularExpression* tokenPluginFilePathRegex = [NSRegularExpression regularExpressionWithPattern:@"(/tokenpluginfile\\.php/)[^/]+(/|$)"
+            options:NSRegularExpressionCaseInsensitive
+            error:nil];
+
+        if (components.path.length > 0 && tokenPluginFilePathRegex != nil) {
+            components.path = [tokenPluginFilePathRegex stringByReplacingMatchesInString:components.path
+                options:0
+                range:NSMakeRange(0, components.path.length)
+                withTemplate:@"$1secret$2"];
+        }
+
+        NSString* absoluteURL = components.URL.absoluteString;
+        if (absoluteURL.length > 0) {
+            return absoluteURL;
+        }
+    }
+
+    if (origin.protocol.length == 0 || origin.host.length == 0) {
+        return nil;
+    }
+
+    if (origin.port > 0) {
+        return [NSString stringWithFormat:@"%@://%@:%ld/", origin.protocol, origin.host, (long)origin.port];
+    }
+
+    return [NSString stringWithFormat:@"%@://%@/", origin.protocol, origin.host];
+}
+
+/**
+ * Resolves a human-friendly host name for media permission prompts.
+ *
+ * @param frame Frame that initiated the request.
+ * @param origin Security origin associated with the request.
+ * @return App name for localhost, otherwise frame/origin host, then title, then a generic fallback.
+ */
+- (NSString*)displayHostForFrame:(WKFrameInfo*)frame origin:(WKSecurityOrigin*)origin API_AVAILABLE(ios(15.0))
+{
+    NSString* host = frame.request.URL.host;
+    if (host.length > 0) {
+        if ([host caseInsensitiveCompare:@"localhost"] == NSOrderedSame) {
+            return [self getAppName];
+        }
+
+        return host;
+    }
+
+    if (origin.host.length > 0) {
+        return origin.host;
+    }
+
+    if (self.title.length > 0) {
+        return self.title;
+    }
+
+    return @"this site";
+}
+
+/**
+ * Resolves the best available app display name for user-facing prompt text.
+ *
+ * @return Title when set, otherwise bundle display name, bundle name, or "this app".
+ */
+- (NSString*)getAppName API_AVAILABLE(ios(15.0))
+{
+    if (self.title.length > 0) {
+        return self.title;
+    }
+
+    NSString* displayName = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleDisplayName"];
+    if ([displayName isKindOfClass:[NSString class]] && displayName.length > 0) {
+        return displayName;
+    }
+
+    NSString* bundleName = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleName"];
+    if ([bundleName isKindOfClass:[NSString class]] && bundleName.length > 0) {
+        return bundleName;
+    }
+
+    return @"this app";
+}
+
+/**
+ * Maps a WebKit media capture type to persistent capability keys.
+ *
+ * @param type Requested WebKit media capture type.
+ * @return Capability keys used in user defaults, or an empty array for unsupported values.
+ */
+- (NSArray*)mediaCaptureTypeKeysForType:(WKMediaCaptureType)type API_AVAILABLE(ios(15.0))
+{
+    switch (type) {
+        case WKMediaCaptureTypeMicrophone:
+            return @[@"microphone"];
+        case WKMediaCaptureTypeCamera:
+            return @[@"camera"];
+        case WKMediaCaptureTypeCameraAndMicrophone:
+            return @[@"camera", @"microphone"];
+        default:
+            return @[];
+    }
+}
+
+/**
+ * Maps a WebKit media capture type to a user-facing label for permission prompts.
+ *
+ * @param type Requested WebKit media capture type.
+ * @return Readable media name shown to the user.
+ */
+- (NSString*)mediaCapturePromptMediaNameForType:(WKMediaCaptureType)type API_AVAILABLE(ios(15.0))
+{
+    switch (type) {
+        case WKMediaCaptureTypeMicrophone:
+            return @"microphone";
+        case WKMediaCaptureTypeCamera:
+            return @"camera";
+        case WKMediaCaptureTypeCameraAndMicrophone:
+            return @"camera and microphone";
+        default:
+            return @"media devices";
+    }
+}
+
+/**
+ * Checks whether a subframe site URL has already been trusted for all required capture capabilities.
+ *
+ * @param siteURL Normalized site URL for the requesting subframe.
+ * @param mediaCaptureTypeKeys Persistent keys representing the required capture capabilities.
+ * @return YES when the URL is trusted for every required media capability; otherwise NO.
+ */
+- (BOOL)isTrustedSiteURL:(NSString*)siteURL mediaCaptureTypeKeys:(NSArray*)mediaCaptureTypeKeys API_AVAILABLE(ios(15.0))
+{
+    // In sub frames (e.g. iframes), request once per permission capability and URL. If URL is different, it will be asked again.
+    NSDictionary* trustedSitesByType = [[NSUserDefaults standardUserDefaults] dictionaryForKey:CDV_TRUSTED_MEDIA_CAPTURE_SITES_STORAGE_KEY];
+    if (![trustedSitesByType isKindOfClass:[NSDictionary class]]) {
+        return NO;
+    }
+
+    for (NSString* mediaCaptureTypeKey in mediaCaptureTypeKeys) {
+        NSArray* trustedSites = [trustedSitesByType objectForKey:mediaCaptureTypeKey];
+        if (![trustedSites isKindOfClass:[NSArray class]]) {
+            return NO;
+        }
+
+        if (![trustedSites containsObject:siteURL]) {
+            return NO;
+        }
+    }
+
+    return YES;
+}
+
+/**
+ * Checks whether the main frame has already been trusted for all required capture capabilities.
+ *
+ * @param mediaCaptureTypeKeys Persistent keys representing the required capture capabilities.
+ * @return YES when main-frame trust is stored for every required media capability; otherwise NO.
+ */
+- (BOOL)isTrustedMainFrameMediaCaptureTypeKeys:(NSArray*)mediaCaptureTypeKeys API_AVAILABLE(ios(15.0))
+{
+    // In main frame, only request once per permission capability. If permission is granted, it won't be asked again.
+    NSDictionary* trustedMainFrameByType = [[NSUserDefaults standardUserDefaults] dictionaryForKey:CDV_TRUSTED_MEDIA_CAPTURE_MAIN_FRAME_STORAGE_KEY];
+    if (![trustedMainFrameByType isKindOfClass:[NSDictionary class]]) {
+        return NO;
+    }
+
+    for (NSString* mediaCaptureTypeKey in mediaCaptureTypeKeys) {
+        NSNumber* isTrusted = [trustedMainFrameByType objectForKey:mediaCaptureTypeKey];
+        if (![isTrusted isKindOfClass:[NSNumber class]]) {
+            return NO;
+        }
+
+        if (![isTrusted boolValue]) {
+            return NO;
+        }
+    }
+
+    return YES;
+}
+
+/**
+ * Persists trust for required media capture capabilities in main-frame requests.
+ *
+ * @param mediaCaptureTypeKeys Persistent keys representing the capture capabilities to trust.
+ */
+- (void)addTrustedMainFrameMediaCaptureTypeKeys:(NSArray*)mediaCaptureTypeKeys API_AVAILABLE(ios(15.0))
+{
+    NSUserDefaults* userDefaults = [NSUserDefaults standardUserDefaults];
+    NSDictionary* trustedMainFrameByType = [userDefaults dictionaryForKey:CDV_TRUSTED_MEDIA_CAPTURE_MAIN_FRAME_STORAGE_KEY];
+
+    NSMutableDictionary* mutableTrustedMainFrameByType = [trustedMainFrameByType isKindOfClass:[NSDictionary class]] ?
+        [trustedMainFrameByType mutableCopy] :
+        [NSMutableDictionary dictionary];
+
+    BOOL hasChanges = NO;
+
+    for (NSString* mediaCaptureTypeKey in mediaCaptureTypeKeys) {
+        NSNumber* isTrusted = [mutableTrustedMainFrameByType objectForKey:mediaCaptureTypeKey];
+        if ([isTrusted isKindOfClass:[NSNumber class]] && [isTrusted boolValue]) {
+            continue;
+        }
+
+        [mutableTrustedMainFrameByType setObject:@(YES) forKey:mediaCaptureTypeKey];
+        hasChanges = YES;
+    }
+
+    if (!hasChanges) {
+        return;
+    }
+
+    [userDefaults setObject:mutableTrustedMainFrameByType forKey:CDV_TRUSTED_MEDIA_CAPTURE_MAIN_FRAME_STORAGE_KEY];
+    [userDefaults synchronize];
+}
+
+/**
+ * Persists trust for a specific subframe site URL and required media capture capabilities.
+ *
+ * @param siteURL Normalized site URL to trust.
+ * @param mediaCaptureTypeKeys Persistent keys representing the capture capabilities to trust.
+ */
+- (void)addTrustedSiteURL:(NSString*)siteURL mediaCaptureTypeKeys:(NSArray*)mediaCaptureTypeKeys API_AVAILABLE(ios(15.0))
+{
+
+    NSUserDefaults* userDefaults = [NSUserDefaults standardUserDefaults];
+    NSDictionary* trustedSitesByType = [userDefaults dictionaryForKey:CDV_TRUSTED_MEDIA_CAPTURE_SITES_STORAGE_KEY];
+
+    NSMutableDictionary* mutableTrustedSitesByType = [trustedSitesByType isKindOfClass:[NSDictionary class]] ?
+        [trustedSitesByType mutableCopy] :
+        [NSMutableDictionary dictionary];
+
+    BOOL hasChanges = NO;
+
+    for (NSString* mediaCaptureTypeKey in mediaCaptureTypeKeys) {
+        NSArray* trustedSites = [mutableTrustedSitesByType objectForKey:mediaCaptureTypeKey];
+        NSMutableArray* mutableTrustedSites = [trustedSites isKindOfClass:[NSArray class]] ?
+            [trustedSites mutableCopy] :
+            [NSMutableArray array];
+
+        if ([mutableTrustedSites containsObject:siteURL]) {
+            continue;
+        }
+
+        [mutableTrustedSites addObject:siteURL];
+        [mutableTrustedSitesByType setObject:mutableTrustedSites forKey:mediaCaptureTypeKey];
+        hasChanges = YES;
+    }
+
+    if (!hasChanges) {
+        return;
+    }
+
+    [userDefaults setObject:mutableTrustedSitesByType forKey:CDV_TRUSTED_MEDIA_CAPTURE_SITES_STORAGE_KEY];
+    [userDefaults synchronize];
+}
+
+/**
+ * Presents the native media-capture confirmation prompt and invokes the selected callback.
+ *
+ * @param webView Web view requesting media access.
+ * @param message Prompt message shown to the user.
+ * @param allowHandler Callback invoked when the user allows access.
+ * @param denyHandler Callback invoked when the user denies access or no presenter is available.
+ */
+- (void)presentMediaCapturePromptForWebView:(WKWebView*)webView
+                                    message:(NSString*)message
+                               allowHandler:(void (^)(void))allowHandler
+                                denyHandler:(void (^)(void))denyHandler API_AVAILABLE(ios(15.0))
+{
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UIAlertController* alert = [UIAlertController alertControllerWithTitle:nil
+                                                                       message:message
+                                                                preferredStyle:UIAlertControllerStyleAlert];
+
+        UIAlertAction* deny = [UIAlertAction actionWithTitle:NSLocalizedString(@"Don't Allow", @"Don't Allow")
+            style:UIAlertActionStyleCancel
+            handler:^(UIAlertAction* action)
+            {
+                denyHandler();
+                [alert dismissViewControllerAnimated:YES completion:nil];
+            }];
+
+        [alert addAction:deny];
+
+        UIAlertAction* allow = [UIAlertAction actionWithTitle:NSLocalizedString(@"Allow", @"Allow")
+            style:UIAlertActionStyleDefault
+            handler:^(UIAlertAction* action)
+            {
+                allowHandler();
+                [alert dismissViewControllerAnimated:YES completion:nil];
+            }];
+
+        [alert addAction:allow];
+
+        UIViewController* presenter = [self presentationControllerForWebView:webView];
+        if (presenter) {
+            [presenter presentViewController:alert animated:YES completion:nil];
+        } else {
+            denyHandler();
+        }
+    });
+}
+#endif
 
 @end

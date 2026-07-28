@@ -68,6 +68,7 @@ public class IonicWebViewEngine extends SystemWebViewEngine {
     localServer.hostAssets("www");
 
     webView.setWebViewClient(new ServerClient(this, parser));
+    webView.setWebChromeClient(new IonicWebChromeClient(this, cordova));
 
     super.init(parentWebView, cordova, client, resourceApi, pluginManager, nativeToJsMessageQueue);
     if (android.os.Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
