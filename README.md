@@ -43,5 +43,5 @@ We created this fork because we needed to include the following modifications in
 You can install this package using the original installation instructions, but installing this package instead:
 
 ```sh
-cordova plugin add @moodlehq/cordova-plugin-ionic-webview@5.0.0-moodle.6
+cordova plugin add @moodlehq/cordova-plugin-ionic-webview@5.0.0-moodle.7
 ```
