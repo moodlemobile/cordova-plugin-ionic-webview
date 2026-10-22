@@ -187,7 +187,7 @@ static NSString* const CDV_TRUSTED_MEDIA_CAPTURE_MAIN_FRAME_STORAGE_KEY = @"cdvT
         }
 
         BOOL isMainFrame = [frame isMainFrame];
-        NSString* siteURL = !isMainFrame ? [self trustedSiteURLForFrame:frame origin:origin] : nil;
+        NSString* siteURL = !isMainFrame ? [self trustedSiteURLForFrame:frame] : nil;
 
         if (isMainFrame && [self isTrustedMainFrameMediaCaptureTypeKeys:mediaCaptureTypeKeys]) {
             decisionHandler(WKPermissionDecisionGrant);
@@ -232,10 +232,9 @@ static NSString* const CDV_TRUSTED_MEDIA_CAPTURE_MAIN_FRAME_STORAGE_KEY = @"cdvT
  * parameters, and normalizing tokenpluginfile path segments before storage.
  *
  * @param frame Frame that initiated the media capture request.
- * @param origin Security origin associated with the request.
- * @return Normalized absolute URL for trust matching, or nil when it cannot be resolved.
+ * @return Normalized absolute frame URL for trust matching, or nil when it is unavailable.
  */
-- (NSString*)trustedSiteURLForFrame:(WKFrameInfo*)frame origin:(WKSecurityOrigin*)origin API_AVAILABLE(ios(15.0))
+- (NSString*)trustedSiteURLForFrame:(WKFrameInfo*)frame API_AVAILABLE(ios(15.0))
 {
     NSURL* frameURL = frame.request.URL;
     if (frameURL.absoluteString.length > 0) {
@@ -275,15 +274,24 @@ static NSString* const CDV_TRUSTED_MEDIA_CAPTURE_MAIN_FRAME_STORAGE_KEY = @"cdvT
         }
     }
 
-    if (origin.protocol.length == 0 || origin.host.length == 0) {
-        return nil;
-    }
+    return nil;
+}
 
-    if (origin.port > 0) {
-        return [NSString stringWithFormat:@"%@://%@:%ld/", origin.protocol, origin.host, (long)origin.port];
-    }
+/**
+ * Resolves the security origin associated with a frame.
+ *
+ * WKFrameInfo's request URL can be unavailable for subframes on older iOS versions.
+ * Prefer the frame's security origin, falling back to the origin supplied by WebKit.
+ *
+ * @param frame Frame whose security origin should be resolved.
+ * @param origin Security origin supplied with the media capture request.
+ * @return Frame security origin when available, otherwise the supplied origin.
+ */
+- (WKSecurityOrigin*)securityOriginForFrame:(WKFrameInfo*)frame fallbackOrigin:(WKSecurityOrigin*)origin API_AVAILABLE(ios(15.0))
+{
+    WKSecurityOrigin* frameOrigin = frame.securityOrigin;
 
-    return [NSString stringWithFormat:@"%@://%@/", origin.protocol, origin.host];
+    return frameOrigin.protocol.length > 0 && frameOrigin.host.length > 0 ? frameOrigin : origin;
 }
 
 /**
@@ -304,8 +312,9 @@ static NSString* const CDV_TRUSTED_MEDIA_CAPTURE_MAIN_FRAME_STORAGE_KEY = @"cdvT
         return host;
     }
 
-    if (origin.host.length > 0) {
-        return origin.host;
+    WKSecurityOrigin* frameOrigin = [self securityOriginForFrame:frame fallbackOrigin:origin];
+    if (frameOrigin.host.length > 0) {
+        return frameOrigin.host;
     }
 
     if (self.title.length > 0) {
