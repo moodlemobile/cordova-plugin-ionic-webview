@@ -201,7 +201,7 @@ static NSString* const CDV_TRUSTED_MEDIA_CAPTURE_MAIN_FRAME_STORAGE_KEY = @"cdvT
             return;
         }
 
-        NSString* host = isMainFrame ? [self getAppName] : [self displayHostForFrame:frame origin:origin];
+        NSString* host = isMainFrame ? [self getAppName] : [self displayHostForFrame:frame origin:origin webView:webView];
         NSString* mediaName = [self mediaCapturePromptMediaNameForType:type];
         NSString* message = [NSString stringWithFormat:@"\"%@\" would like to access the %@.", host, mediaName];
 
@@ -294,18 +294,30 @@ static NSString* const CDV_TRUSTED_MEDIA_CAPTURE_MAIN_FRAME_STORAGE_KEY = @"cdvT
     return frameOrigin.protocol.length > 0 && frameOrigin.host.length > 0 ? frameOrigin : origin;
 }
 
+- (BOOL)doesHost:(NSString*)host protocol:(NSString*)protocol matchWebViewURL:(NSURL*)webViewURL API_AVAILABLE(ios(15.0))
+{
+    NSString* webViewHost = webViewURL.host;
+    NSString* webViewProtocol = webViewURL.scheme;
+
+    return host.length > 0 && protocol.length > 0 && webViewHost.length > 0 && webViewProtocol.length > 0
+        && [host caseInsensitiveCompare:webViewHost] == NSOrderedSame
+        && [protocol caseInsensitiveCompare:webViewProtocol] == NSOrderedSame;
+}
+
 /**
  * Resolves a human-friendly host name for media permission prompts.
  *
  * @param frame Frame that initiated the request.
  * @param origin Security origin associated with the request.
- * @return App name for localhost, otherwise frame/origin host, then title, then a generic fallback.
+ * @param webView Web view associated with the request.
+ * @return App name when frame origin matches the current web view URL, otherwise frame/origin host, then title, then a generic fallback.
  */
-- (NSString*)displayHostForFrame:(WKFrameInfo*)frame origin:(WKSecurityOrigin*)origin API_AVAILABLE(ios(15.0))
+- (NSString*)displayHostForFrame:(WKFrameInfo*)frame origin:(WKSecurityOrigin*)origin webView:(WKWebView*)webView API_AVAILABLE(ios(15.0))
 {
-    NSString* host = frame.request.URL.host;
+    NSURL* frameURL = frame.request.URL;
+    NSString* host = frameURL.host;
     if (host.length > 0) {
-        if ([host caseInsensitiveCompare:@"localhost"] == NSOrderedSame) {
+        if ([self doesHost:host protocol:frameURL.scheme matchWebViewURL:webView.URL]) {
             return [self getAppName];
         }
 
@@ -314,6 +326,10 @@ static NSString* const CDV_TRUSTED_MEDIA_CAPTURE_MAIN_FRAME_STORAGE_KEY = @"cdvT
 
     WKSecurityOrigin* frameOrigin = [self securityOriginForFrame:frame fallbackOrigin:origin];
     if (frameOrigin.host.length > 0) {
+        if ([self doesHost:frameOrigin.host protocol:frameOrigin.protocol matchWebViewURL:webView.URL]) {
+            return [self getAppName];
+        }
+
         return frameOrigin.host;
     }
 
