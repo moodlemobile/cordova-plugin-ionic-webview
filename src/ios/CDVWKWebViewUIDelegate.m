@@ -436,6 +436,10 @@ static NSString* const CDV_TRUSTED_MEDIA_CAPTURE_MAIN_FRAME_STORAGE_KEY = @"trus
 /**
  * Checks whether the main frame has already been trusted for all required capture capabilities.
  *
+ * For main frame, the request is granted once, not per URL. This is for 2 reasons:
+ * 1- JS code can change the main frame URL (e.g. using history.pushState), so the URL is not reliable.
+ * 2- WKWebView caches the permission decisions, so repeated requests are ignored for several minutes.
+ *
  * @param mediaCaptureTypeKeys Persistent keys representing the required capture capabilities.
  * @return YES when main-frame trust is stored for every required media capability; otherwise NO.
  */
