@@ -19,8 +19,8 @@
 
 #import "CDVWKWebViewUIDelegate.h"
 
-static NSString* const CDV_TRUSTED_MEDIA_CAPTURE_SITES_STORAGE_KEY = @"cdvTrustedMediaCaptureSitesByType";
-static NSString* const CDV_TRUSTED_MEDIA_CAPTURE_MAIN_FRAME_STORAGE_KEY = @"cdvTrustedMediaCaptureMainFrameByType";
+static NSString* const CDV_TRUSTED_MEDIA_CAPTURE_SITES_STORAGE_KEY = @"trustedMediaCaptureSitesByType";
+static NSString* const CDV_TRUSTED_MEDIA_CAPTURE_MAIN_FRAME_STORAGE_KEY = @"trustedMediaCaptureMainFrameByType";
 
 @implementation CDVWKWebViewUIDelegate
 
